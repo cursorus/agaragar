@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Agar.io Replit Client</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+        canvas { display: block; }
+        #login { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; flex-direction: column; }
+        input, button { padding: 15px; font-size: 20px; margin: 10px; border-radius: 5px; border: none; }
+        button { background: #27ae60; color: white; cursor: pointer; }
+        #leaderboard { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); color: white; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="login">
+    <h1 style="color:white">Agar.io (Online)</h1>
+    <input id="nickname" placeholder="Твой ник">
+    <button onclick="startGame()">Играть</button>
+</div>
+
+<div id="leaderboard" style="display:none"></div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+    // ВСТАВЬ СЮДА ССЫЛКУ ИЗ REPLIT (без слэша в конце)
+    // Например: const SERVER_URL = "https://agarserver.username.repl.co";
+    const SERVER_URL = "СЮДА_ВСТАВЬ_ССЫЛКУ_ИЗ_REPLIT"; 
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let socket;
+    let gameState = { players: {}, food: [], bots: [] };
+    let mySocketId = null;
+    let camera = { x: 0, y: 0 };
+
+    function startGame() {
+        const name = document.getElementById('nickname').value;
+        if(!name) return alert("Введите имя!");
+        if(SERVER_URL.includes("СЮДА")) return alert("Ты забыл вставить ссылку на сервер в код!");
+
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('leaderboard').style.display = 'block';
+
+        socket = io(SERVER_URL);
+
+        socket.on('connect', () => {
+            mySocketId = socket.id;
+            socket.emit('join', name);
+        });
+
+        socket.on('state', (state) => {
+            gameState = state;
+            draw();
+        });
+
+        // Отправка мыши
+        canvas.addEventListener('mousemove', (e) => {
+            if(!mySocketId) return;
+            const dx = e.clientX - canvas.width / 2;
+            const dy = e.clientY - canvas.height / 2;
+            socket.emit('input', { x: dx, y: dy });
+        });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Камера
+        let me = gameState.players[mySocketId];
+        if (me) {
+            camera.x = me.x - canvas.width / 2;
+            camera.y = me.y - canvas.height / 2;
+        }
+
+        ctx.save();
+        ctx.translate(-camera.x, -camera.y);
+
+        // Сетка
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0, 0, 3000, 3000); // WORLD_SIZE
+
+        // Еда
+        gameState.food.forEach(f => {
+            ctx.beginPath(); ctx.arc(f.x, f.y, 5, 0, Math.PI*2);
+            ctx.fillStyle = f.color; ctx.fill();
+        });
+
+        // Игроки и Боты
+        let all = [...Object.values(gameState.players), ...gameState.bots];
+        all.sort((a,b) => a.r - b.r);
+
+        all.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+            
+            ctx.fillStyle = "white";
+            ctx.font = "14px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText(p.name, p.x, p.y);
+        });
+
+        ctx.restore();
+
+        // Лидерборд
+        const top5 = all.sort((a,b) => b.r - a.r).slice(0, 5);
+        document.getElementById('leaderboard').innerHTML = 
+            "<b>Top 5:</b><br>" + top5.map(p => `${p.name}: ${Math.floor(p.r)}`).join('<br>');
+    }
+    
+    window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    });
+</script>
+</body>
+</html>
